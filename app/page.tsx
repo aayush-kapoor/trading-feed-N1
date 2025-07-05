@@ -185,6 +185,11 @@ export default function TradingFeed() {
     }
   }
 
+  // Clear trades list while keeping connection active
+  const clearTradesList = () => {
+    setTrades([])
+  }
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -307,7 +312,19 @@ export default function TradingFeed() {
                 <TrendingUp className="h-5 w-5" />
                 Live Trades
               </span>
-              <Badge variant="outline">{trades.length} trades</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{trades.length} trades</Badge>
+                {trades.length > 0 && (
+                  <Button
+                    onClick={clearTradesList}
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                  >
+                    Clear List
+                  </Button>
+                )}
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
