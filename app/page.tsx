@@ -154,6 +154,10 @@ export default function TradingFeed() {
   // Handle incoming trade data from both Socket.IO and WebSocket
   const handleTradeData = (tradeData: any) => {
     try {
+      // Log the original message format to console
+      console.log("📨 Original WebSocket message received:", tradeData)
+      toast.info("New message received - check console logs")
+
       let parsedData = tradeData
 
       // If it's a string, try to parse as JSON (for raw WebSocket messages)
@@ -162,6 +166,7 @@ export default function TradingFeed() {
           parsedData = JSON.parse(tradeData)
         } catch {
           // If JSON parsing fails, skip this message
+          console.log("❌ Failed to parse JSON:", tradeData)
           return
         }
       }
