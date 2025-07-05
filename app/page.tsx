@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { io, Socket } from "socket.io-client"
+import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import {
   Activity,
@@ -75,7 +75,6 @@ export default function TradingFeed() {
     "disconnected",
   )
   const [trades, setTrades] = useState<Trade[]>([])
-  const [error, setError] = useState<string | null>(null)
   const [isMockMode, setIsMockMode] = useState(false)
   const [mockInterval, setMockInterval] = useState<NodeJS.Timeout | null>(null)
 
@@ -226,12 +225,11 @@ export default function TradingFeed() {
   // Smart connection that tries both Socket.IO and WebSocket
   const connectSmart = useCallback(async () => {
     if (!wsUrl.trim()) {
-      setError("Please enter a server URL")
+      toast.error("Please enter a server URL")
       return
     }
 
     setConnectionStatus("connecting")
-    setError(null)
 
     try {
       // First, try Socket.IO
@@ -240,12 +238,14 @@ export default function TradingFeed() {
         setSocket(socketIOConnection)
         setConnectionType("socket.io")
         setConnectionStatus("connected")
+        toast.success("Connected via Socket.IO")
         
         // Handle Socket.IO disconnect
         socketIOConnection.on('disconnect', () => {
           setConnectionStatus("disconnected")
           setSocket(null)
           setConnectionType(null)
+          toast.info("Disconnected from Socket.IO server")
         })
         
         return
@@ -256,17 +256,19 @@ export default function TradingFeed() {
           setWebSocket(webSocketConnection)
           setConnectionType("websocket")
           setConnectionStatus("connected")
+          toast.success("Connected via WebSocket")
           return
         } catch (webSocketError) {
           // Both failed
           const socketMsg = socketIOError instanceof Error ? socketIOError.message : 'Unknown Socket.IO error'
           const wsMsg = webSocketError instanceof Error ? webSocketError.message : 'Unknown WebSocket error'
-          throw new Error(`Connection failed. Socket.IO: ${socketMsg}, WebSocket: ${wsMsg}`)
+          throw new Error(`Both connection methods failed. Socket.IO: ${socketMsg}, WebSocket: ${wsMsg}`)
         }
       }
     } catch (err) {
       setConnectionStatus("error")
-      setError(err instanceof Error ? err.message : 'Unknown connection error')
+      const errorMessage = err instanceof Error ? err.message : 'Unknown connection error'
+      toast.error(`Connection failed: ${errorMessage}`)
     }
   }, [wsUrl])
 
@@ -282,13 +284,13 @@ export default function TradingFeed() {
     }
     setConnectionType(null)
     setConnectionStatus("disconnected")
+    toast.info("Disconnected")
   }, [socket, webSocket])
 
   // Start mock data mode
   const startMockMode = () => {
     setIsMockMode(true)
     setConnectionStatus("connected")
-    setError(null)
 
     // Generate initial trades
     const initialTrades = Array.from({ length: 10 }, generateMockTrade)
@@ -304,6 +306,7 @@ export default function TradingFeed() {
     )
 
     setMockInterval(interval)
+    toast.success("Mock data mode activated")
   }
 
   // Stop mock data mode
@@ -314,11 +317,13 @@ export default function TradingFeed() {
       clearInterval(mockInterval)
       setMockInterval(null)
     }
+    toast.info("Mock data mode stopped")
   }
 
   // Clear trades list while keeping connection active
   const clearTradesList = () => {
     setTrades([])
+    toast.success("Trade list cleared")
   }
 
   // Cleanup on unmount
@@ -451,12 +456,6 @@ export default function TradingFeed() {
                 Test with Mock Data
               </Button>
             </div>
-
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
           </CardContent>
         </Card>
 
