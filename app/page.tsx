@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import {
   Activity,
   Wifi,
@@ -31,39 +30,6 @@ type Trade = {
   exchange: string
 }
 
-// Mock data generator for testing
-const generateMockTrade = (): Trade => {
-  const symbols = ["BTC/USD", "ETH/USD", "SOL/USD", "ADA/USD", "DOT/USD", "AVAX/USD", "MATIC/USD"]
-  const exchanges = ["Binance", "Coinbase", "Kraken", "Bybit", "OKX", "Gemini", "KuCoin"]
-  const sides: ("buy" | "sell")[] = ["buy", "sell"]
-
-  const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)]
-  const randomExchange = exchanges[Math.floor(Math.random() * exchanges.length)]
-  const randomSide = sides[Math.floor(Math.random() * sides.length)]
-
-  // Generate realistic price based on symbol
-  let basePrice = 50000 // Default for BTC
-  if (randomSymbol.includes("ETH")) basePrice = 3500
-  else if (randomSymbol.includes("SOL")) basePrice = 100
-  else if (randomSymbol.includes("ADA")) basePrice = 0.5
-  else if (randomSymbol.includes("DOT")) basePrice = 7
-  else if (randomSymbol.includes("AVAX")) basePrice = 40
-  else if (randomSymbol.includes("MATIC")) basePrice = 1.2
-
-  const price = basePrice * (0.95 + Math.random() * 0.1) // ±5% variation
-  const size = Math.random() * 10 + 0.001 // 0.001 to 10
-
-  return {
-    id: crypto.randomUUID(),
-    timestamp: Date.now(),
-    symbol: randomSymbol,
-    price: price,
-    size: size,
-    side: randomSide,
-    exchange: randomExchange,
-  }
-}
-
 export default function TradingFeed() {
   const [wsUrl, setWsUrl] = useState("")
   const [socket, setSocket] = useState<Socket | null>(null)
@@ -73,8 +39,6 @@ export default function TradingFeed() {
     "disconnected",
   )
   const [trades, setTrades] = useState<Trade[]>([])
-  const [isMockMode, setIsMockMode] = useState(false)
-  const [mockInterval, setMockInterval] = useState<NodeJS.Timeout | null>(null)
 
   // Format timestamp
   const formatTime = (timestamp: number) => {
@@ -100,33 +64,43 @@ export default function TradingFeed() {
   // Handle incoming trade data from both Socket.IO and WebSocket
   const handleTradeData = (tradeData: any) => {
     try {
-      // Handle different message formats
       let parsedData = tradeData
 
-      // Handle Socket.IO format: "42["tradeCreated", {...}]" for WebSocket
-      if (typeof tradeData === "string" && tradeData.startsWith("42[")) {
-        const parsed = JSON.parse(tradeData.substring(2))
-        if (parsed && parsed.length >= 2 && parsed[0] === "tradeCreated") {
-          parsedData = parsed[1]
-        }
-      } else if (typeof tradeData === "string") {
-        // Try to parse as JSON for native WebSocket
+      // If it's a string, try to parse as JSON (for raw WebSocket messages)
+      if (typeof tradeData === "string") {
         try {
           parsedData = JSON.parse(tradeData)
         } catch {
-          return // Invalid JSON, skip
+          // If JSON parsing fails, skip this message
+          return
         }
       }
 
-      // Map the data to our Trade type
-      const trade: Trade = {
-        id: parsedData.id || crypto.randomUUID(),
-        timestamp: parsedData.timestamp || Date.now(),
-        symbol: parsedData.symbol || 'UNK',
-        price: parsedData.price || 0,
-        size: parsedData.size || 0,
-        side: parsedData.side || 'buy',
-        exchange: parsedData.exchange || 'unknown',
+      // Handle different data structures that might come from various servers
+      let trade: Trade
+
+      // Check if it's already in our expected format
+      if (parsedData.id && parsedData.timestamp && parsedData.symbol && parsedData.price !== undefined) {
+        trade = {
+          id: parsedData.id,
+          timestamp: parsedData.timestamp,
+          symbol: parsedData.symbol,
+          price: parsedData.price,
+          size: parsedData.size || 0,
+          side: parsedData.side || 'buy',
+          exchange: parsedData.exchange || 'unknown',
+        }
+      } else {
+        // Map other possible formats (like pump.fun data structure)
+        trade = {
+          id: parsedData.signature || parsedData.id || crypto.randomUUID(),
+          timestamp: parsedData.timestamp || Date.now(),
+          symbol: parsedData.symbol || `${parsedData.name || 'UNK'}/${parsedData.symbol || 'USD'}`,
+          price: parsedData.price || parsedData.sol_amount || 0,
+          size: parsedData.size || parsedData.token_amount || 0,
+          side: parsedData.side || (parsedData.is_buy ? 'buy' : 'sell'),
+          exchange: parsedData.exchange || 'unknown',
+        }
       }
       
       // Validate essential fields
@@ -154,8 +128,13 @@ export default function TradingFeed() {
 
       newSocket.on('connect', () => {
         clearTimeout(timeout)
-        // Subscribe to trade events
+        
+        // Listen for various possible event names
         newSocket.on('tradeCreated', handleTradeData)
+        newSocket.on('trade', handleTradeData)
+        newSocket.on('data', handleTradeData)
+        newSocket.on('message', handleTradeData)
+        
         resolve(newSocket)
       })
 
@@ -199,57 +178,46 @@ export default function TradingFeed() {
     })
   }
 
-  // Smart connection that tries both Socket.IO and WebSocket
+  // Smart connection logic - try Socket.IO first, then WebSocket
   const connectSmart = useCallback(async () => {
     if (!wsUrl.trim()) {
-      toast.error("Please enter a server URL")
+      toast.error("Please enter a WebSocket URL")
       return
     }
 
     setConnectionStatus("connecting")
-
+    
     try {
-      // First, try Socket.IO
+      // Try Socket.IO first
       try {
-        const socketIOConnection = await trySocketIO(wsUrl)
-        setSocket(socketIOConnection)
+        const socketConnection = await trySocketIO(wsUrl)
+        setSocket(socketConnection)
         setConnectionType("socket.io")
         setConnectionStatus("connected")
         toast.success("Connected via Socket.IO")
-        
-        // Handle Socket.IO disconnect
-        socketIOConnection.on('disconnect', () => {
-          setConnectionStatus("disconnected")
-          setSocket(null)
-          setConnectionType(null)
-          toast.info("Disconnected from Socket.IO server")
-        })
-        
         return
       } catch (socketIOError) {
         // Socket.IO failed, try WebSocket
         try {
-          const webSocketConnection = await tryWebSocket(wsUrl)
-          setWebSocket(webSocketConnection)
+          const wsConnection = await tryWebSocket(wsUrl)
+          setWebSocket(wsConnection)
           setConnectionType("websocket")
           setConnectionStatus("connected")
           toast.success("Connected via WebSocket")
           return
-        } catch (webSocketError) {
+        } catch (wsError) {
           // Both failed
-          const socketMsg = socketIOError instanceof Error ? socketIOError.message : 'Unknown Socket.IO error'
-          const wsMsg = webSocketError instanceof Error ? webSocketError.message : 'Unknown WebSocket error'
-          throw new Error(`Both connection methods failed. Socket.IO: ${socketMsg}, WebSocket: ${wsMsg}`)
+          setConnectionStatus("error")
+          toast.error("Failed to connect via Socket.IO or WebSocket")
         }
       }
     } catch (err) {
       setConnectionStatus("error")
-      const errorMessage = err instanceof Error ? err.message : 'Unknown connection error'
-      toast.error(`Connection failed: ${errorMessage}`)
+      toast.error("Connection failed")
     }
   }, [wsUrl])
 
-  // Disconnect from either Socket.IO or WebSocket
+  // Smart disconnect
   const disconnectSmart = useCallback(() => {
     if (socket) {
       socket.disconnect()
@@ -263,39 +231,6 @@ export default function TradingFeed() {
     setConnectionStatus("disconnected")
     toast.info("Disconnected")
   }, [socket, webSocket])
-
-  // Start mock data mode
-  const startMockMode = () => {
-    setIsMockMode(true)
-    setConnectionStatus("connected")
-
-    // Generate initial trades
-    const initialTrades = Array.from({ length: 10 }, generateMockTrade)
-    setTrades(initialTrades)
-
-    // Start generating mock trades every 1-3 seconds
-    const interval = setInterval(
-      () => {
-        const newTrade = generateMockTrade()
-        setTrades((prevTrades) => [newTrade, ...prevTrades.slice(0, 99)])
-      },
-      Math.random() * 2000 + 1000,
-    )
-
-    setMockInterval(interval)
-    toast.success("Mock data mode activated")
-  }
-
-  // Stop mock data mode
-  const stopMockMode = () => {
-    setIsMockMode(false)
-    setConnectionStatus("disconnected")
-    if (mockInterval) {
-      clearInterval(mockInterval)
-      setMockInterval(null)
-    }
-    toast.info("Mock data mode stopped")
-  }
 
   // Clear trades list while keeping connection active
   const clearTradesList = () => {
@@ -312,11 +247,8 @@ export default function TradingFeed() {
       if (webSocket) {
         webSocket.close()
       }
-      if (mockInterval) {
-        clearInterval(mockInterval)
-      }
     }
-  }, [socket, webSocket, mockInterval])
+  }, [socket, webSocket])
 
   const getStatusIcon = () => {
     switch (connectionStatus) {
@@ -332,7 +264,6 @@ export default function TradingFeed() {
   }
 
   const getStatusText = () => {
-    if (isMockMode) return "Mock Mode"
     if (connectionStatus === "connected" && connectionType) {
       return `Connected (${connectionType})`
     }
@@ -362,7 +293,7 @@ export default function TradingFeed() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               {getStatusIcon()}
-              Establish Connection
+              WebSocket Connection
               <Badge variant={connectionStatus === "connected" ? "default" : "secondary"}>{getStatusText()}</Badge>
             </CardTitle>
           </CardHeader>
@@ -370,15 +301,15 @@ export default function TradingFeed() {
             <div className="space-y-2">
               <div className="flex gap-2">
                 <Input
-                  placeholder="wss://your-socketio-server.com"
+                  placeholder="wss://your-server.com"
                   value={wsUrl}
                   onChange={(e) => setWsUrl(e.target.value)}
                   className="flex-1"
-                  disabled={connectionStatus === "connected" || isMockMode}
+                  disabled={connectionStatus === "connected"}
                 />
-                {connectionStatus === "connected" || isMockMode ? (
+                {connectionStatus === "connected" ? (
                   <Button
-                    onClick={isMockMode ? stopMockMode : disconnectSmart}
+                    onClick={disconnectSmart}
                     variant="destructive"
                     className="flex items-center gap-2"
                   >
@@ -402,36 +333,22 @@ export default function TradingFeed() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setWsUrl("wss://pumpportal.fun")}
-                  disabled={connectionStatus === "connected" || isMockMode}
+                  onClick={() => setWsUrl("wss://trading-websocket-backend.onrender.com")}
+                  disabled={connectionStatus === "connected"}
                   className="text-xs"
                 >
-                  PumpPortal
-                </Button>
+                  Mock Server 1
+                </Button>                                
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setWsUrl("wss://frontend-api-v3.pump.fun")}
-                  disabled={connectionStatus === "connected" || isMockMode}
+                  disabled={connectionStatus === "connected"}
                   className="text-xs"
                 >
-                  Pump.fun
+                  Mock Server 2
                 </Button>
               </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <Separator orientation="vertical" className="h-6" />
-              <span className="text-sm text-slate-600 dark:text-slate-400">or</span>
-              <Button
-                onClick={startMockMode}
-                variant="outline"
-                disabled={connectionStatus === "connected" || isMockMode}
-                className="flex items-center gap-2 bg-transparent"
-              >
-                <Activity className="h-4 w-4" />
-                Test with Mock Data
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -465,9 +382,9 @@ export default function TradingFeed() {
                 <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p className="text-lg font-medium mb-2">No trades yet</p>
                 <p className="text-sm">
-                  {connectionStatus === "connected" || isMockMode
+                  {connectionStatus === "connected"
                     ? "Waiting for trade data..."
-                    : "Connect to a Socket.IO server or use mock data to see trades"}
+                    : "Connect to a WebSocket server to see live trades"}
                 </p>
               </div>
             ) : (
