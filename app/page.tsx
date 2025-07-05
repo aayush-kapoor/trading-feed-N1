@@ -1,12 +1,15 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { io, Socket } from "socket.io-client"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   Activity,
   Wifi,
@@ -18,6 +21,9 @@ import {
   Clock,
   DollarSign,
   BarChart3,
+  Filter,
+  ChevronDown,
+  X,
 } from "lucide-react"
 
 type Trade = {
@@ -30,6 +36,16 @@ type Trade = {
   exchange: string
 }
 
+type FilterState = {
+  symbol: string
+  priceMin: string
+  priceMax: string
+  sizeMin: string
+  sizeMax: string
+  sides: ("buy" | "sell")[]
+  exchanges: string[]
+}
+
 export default function TradingFeed() {
   const [wsUrl, setWsUrl] = useState("")
   const [socket, setSocket] = useState<Socket | null>(null)
@@ -39,6 +55,93 @@ export default function TradingFeed() {
     "disconnected",
   )
   const [trades, setTrades] = useState<Trade[]>([])
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
+  
+  // Filter state
+  const [filters, setFilters] = useState<FilterState>({
+    symbol: "",
+    priceMin: "",
+    priceMax: "",
+    sizeMin: "",
+    sizeMax: "",
+    sides: ["buy", "sell"],
+    exchanges: [],
+  })
+
+  // Dynamic list of unique exchanges from actual trade data
+  const uniqueExchanges = useMemo(() => {
+    const exchangeSet = new Set(trades.map(trade => trade.exchange))
+    return Array.from(exchangeSet).filter(exchange => exchange && exchange !== 'unknown').sort()
+  }, [trades])
+
+  // Initialize exchange filter when exchanges are first discovered
+  useEffect(() => {
+    if (uniqueExchanges.length > 0 && filters.exchanges.length === 0) {
+      setFilters(prev => ({ ...prev, exchanges: [...uniqueExchanges] }))
+    }
+  }, [uniqueExchanges, filters.exchanges.length])
+
+  // Filter trades based on current filter criteria
+  const filteredTrades = useMemo(() => {
+    return trades.filter(trade => {
+      // Symbol filter
+      if (filters.symbol && !trade.symbol.toLowerCase().includes(filters.symbol.toLowerCase())) {
+        return false
+      }
+
+      // Price range filter
+      if (filters.priceMin && trade.price < parseFloat(filters.priceMin)) {
+        return false
+      }
+      if (filters.priceMax && trade.price > parseFloat(filters.priceMax)) {
+        return false
+      }
+
+      // Size range filter
+      if (filters.sizeMin && trade.size < parseFloat(filters.sizeMin)) {
+        return false
+      }
+      if (filters.sizeMax && trade.size > parseFloat(filters.sizeMax)) {
+        return false
+      }
+
+      // Side filter
+      if (!filters.sides.includes(trade.side)) {
+        return false
+      }
+
+      // Exchange filter
+      if (filters.exchanges.length > 0 && !filters.exchanges.includes(trade.exchange)) {
+        return false
+      }
+
+      return true
+    })
+  }, [trades, filters])
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilters({
+      symbol: "",
+      priceMin: "",
+      priceMax: "",
+      sizeMin: "",
+      sizeMax: "",
+      sides: ["buy", "sell"],
+      exchanges: [...uniqueExchanges],
+    })
+  }
+
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0
+    if (filters.symbol) count++
+    if (filters.priceMin || filters.priceMax) count++
+    if (filters.sizeMin || filters.sizeMax) count++
+    if (filters.sides.length < 2) count++
+    if (filters.exchanges.length < uniqueExchanges.length) count++
+    return count
+  }, [filters, uniqueExchanges.length])
 
   // Format timestamp
   const formatTime = (timestamp: number) => {
@@ -362,7 +465,7 @@ export default function TradingFeed() {
                 Live Trades
               </span>
               <div className="flex items-center gap-2">
-                <Badge variant="outline">{trades.length} trades</Badge>
+                <Badge variant="outline">{filteredTrades.length} of {trades.length} trades</Badge>
                 {trades.length > 0 && (
                   <Button
                     onClick={clearTradesList}
@@ -377,14 +480,161 @@ export default function TradingFeed() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {trades.length === 0 ? (
+            {/* Filter Panel */}
+            <Collapsible open={isFilterOpen} onOpenChange={setIsFilterOpen} className="mb-4">
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2 mb-4"
+                >
+                  <Filter className="h-4 w-4" />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <Badge variant="secondary" className="ml-1">
+                      {activeFilterCount}
+                    </Badge>
+                  )}
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 p-4 border rounded-lg bg-slate-50 dark:bg-slate-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Symbol Filter */}
+                  <div className="space-y-2">
+                    <Label>Symbol</Label>
+                    <Input
+                      placeholder="Search symbols..."
+                      value={filters.symbol}
+                      onChange={(e) => setFilters(prev => ({ ...prev, symbol: e.target.value }))}
+                    />
+                  </div>
+
+                  {/* Price Range */}
+                  <div className="space-y-2">
+                    <Label>Price Range</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Min"
+                        type="number"
+                        value={filters.priceMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, priceMin: e.target.value }))}
+                      />
+                      <Input
+                        placeholder="Max"
+                        type="number"
+                        value={filters.priceMax}
+                        onChange={(e) => setFilters(prev => ({ ...prev, priceMax: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Size Range */}
+                  <div className="space-y-2">
+                    <Label>Size Range</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Min"
+                        type="number"
+                        value={filters.sizeMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, sizeMin: e.target.value }))}
+                      />
+                      <Input
+                        placeholder="Max"
+                        type="number"
+                        value={filters.sizeMax}
+                        onChange={(e) => setFilters(prev => ({ ...prev, sizeMax: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Side Filter */}
+                  <div className="space-y-2">
+                    <Label>Side</Label>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="buy"
+                          checked={filters.sides.includes("buy")}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setFilters(prev => ({ ...prev, sides: [...prev.sides, "buy"] }))
+                            } else {
+                              setFilters(prev => ({ ...prev, sides: prev.sides.filter(s => s !== "buy") }))
+                            }
+                          }}
+                        />
+                        <Label htmlFor="buy">Buy</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="sell"
+                          checked={filters.sides.includes("sell")}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setFilters(prev => ({ ...prev, sides: [...prev.sides, "sell"] }))
+                            } else {
+                              setFilters(prev => ({ ...prev, sides: prev.sides.filter(s => s !== "sell") }))
+                            }
+                          }}
+                        />
+                        <Label htmlFor="sell">Sell</Label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Exchange Filter */}
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Exchanges ({uniqueExchanges.length} found)</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {uniqueExchanges.map((exchange) => (
+                        <div key={exchange} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={exchange}
+                            checked={filters.exchanges.includes(exchange)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setFilters(prev => ({ ...prev, exchanges: [...prev.exchanges, exchange] }))
+                              } else {
+                                setFilters(prev => ({ ...prev, exchanges: prev.exchanges.filter(e => e !== exchange) }))
+                              }
+                            }}
+                          />
+                          <Label htmlFor={exchange} className="text-sm">
+                            {exchange}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clear Filters */}
+                <div className="flex justify-end">
+                  <Button
+                    onClick={clearFilters}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                  >
+                    <X className="h-4 w-4" />
+                    Clear Filters
+                  </Button>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            {filteredTrades.length === 0 ? (
               <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                 <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium mb-2">No trades yet</p>
+                <p className="text-lg font-medium mb-2">
+                  {trades.length === 0 ? "No trades yet" : "No trades match your filters"}
+                </p>
                 <p className="text-sm">
-                  {connectionStatus === "connected"
-                    ? "Waiting for trade data..."
-                    : "Connect to a WebSocket server to see live trades"}
+                  {trades.length === 0
+                    ? connectionStatus === "connected"
+                      ? "Waiting for trade data..."
+                      : "Connect to a WebSocket server to see live trades"
+                    : "Try adjusting your filter criteria"}
                 </p>
               </div>
             ) : (
@@ -408,7 +658,7 @@ export default function TradingFeed() {
 
                   {/* Trades */}
                   <div className="space-y-1 max-h-96 overflow-y-auto">
-                    {trades.map((trade, index) => (
+                    {filteredTrades.map((trade, index) => (
                       <div
                         key={`${trade.id}-${trade.timestamp}-${index}`}
                         className="grid grid-cols-6 gap-4 p-3 rounded-lg border transition-all duration-300 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
