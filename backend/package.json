@@ -11,6 +11,9 @@
     "ws": "^8.18.0",
     "uuid": "^10.0.0"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "keywords": ["websocket", "trading", "mock", "server"],
   "author": "",
   "license": "MIT"

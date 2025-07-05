@@ -1,10 +1,14 @@
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 
-// Create WebSocket server on port 8080
-const wss = new WebSocket.Server({ port: 8080 });
+// Create WebSocket server on port from environment or default to 8080
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ 
+  port: PORT,
+  host: '0.0.0.0' // Bind to all interfaces for cloud deployment
+});
 
-console.log('🚀 Trading WebSocket Server starting on port 8080...');
+console.log(`🚀 Trading WebSocket Server starting on port ${PORT}...`);
 
 // Mock data generator - same logic as frontend
 function generateMockTrade() {
@@ -79,8 +83,8 @@ wss.on('error', function error(err) {
 });
 
 console.log('🎯 WebSocket server is running!');
-console.log('📡 Connect to: ws://localhost:8080');
-console.log('🔗 Or use in your frontend: "ws://localhost:8080"');
+console.log(`📡 Connect to: ws://localhost:${PORT}`);
+console.log(`🔗 Or use in your frontend: "ws://localhost:${PORT}"`);
 console.log('⏹️  Press Ctrl+C to stop the server');
 
 // Graceful shutdown
