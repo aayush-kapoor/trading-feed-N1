@@ -43,7 +43,7 @@ type FilterState = {
   sizeMin: string
   sizeMax: string
   sides: ("buy" | "sell")[]
-  exchanges: string[]
+  exchange: string
 }
 
 export default function TradingFeed() {
@@ -65,21 +65,8 @@ export default function TradingFeed() {
     sizeMin: "",
     sizeMax: "",
     sides: ["buy", "sell"],
-    exchanges: [],
+    exchange: "",
   })
-
-  // Dynamic list of unique exchanges from actual trade data
-  const uniqueExchanges = useMemo(() => {
-    const exchangeSet = new Set(trades.map(trade => trade.exchange))
-    return Array.from(exchangeSet).filter(exchange => exchange && exchange !== 'unknown').sort()
-  }, [trades])
-
-  // Initialize exchange filter when exchanges are first discovered
-  useEffect(() => {
-    if (uniqueExchanges.length > 0 && filters.exchanges.length === 0) {
-      setFilters(prev => ({ ...prev, exchanges: [...uniqueExchanges] }))
-    }
-  }, [uniqueExchanges, filters.exchanges.length])
 
   // Filter trades based on current filter criteria
   const filteredTrades = useMemo(() => {
@@ -111,7 +98,7 @@ export default function TradingFeed() {
       }
 
       // Exchange filter
-      if (filters.exchanges.length > 0 && !filters.exchanges.includes(trade.exchange)) {
+      if (filters.exchange && !trade.exchange.toLowerCase().includes(filters.exchange.toLowerCase())) {
         return false
       }
 
@@ -128,7 +115,7 @@ export default function TradingFeed() {
       sizeMin: "",
       sizeMax: "",
       sides: ["buy", "sell"],
-      exchanges: [...uniqueExchanges],
+      exchange: "",
     })
   }
 
@@ -139,9 +126,9 @@ export default function TradingFeed() {
     if (filters.priceMin || filters.priceMax) count++
     if (filters.sizeMin || filters.sizeMax) count++
     if (filters.sides.length < 2) count++
-    if (filters.exchanges.length < uniqueExchanges.length) count++
+    if (filters.exchange) count++
     return count
-  }, [filters, uniqueExchanges.length])
+  }, [filters])
 
   // Format timestamp
   const formatTime = (timestamp: number) => {
@@ -583,28 +570,13 @@ export default function TradingFeed() {
                   </div>
 
                   {/* Exchange Filter */}
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Exchanges ({uniqueExchanges.length} found)</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {uniqueExchanges.map((exchange) => (
-                        <div key={exchange} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={exchange}
-                            checked={filters.exchanges.includes(exchange)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setFilters(prev => ({ ...prev, exchanges: [...prev.exchanges, exchange] }))
-                              } else {
-                                setFilters(prev => ({ ...prev, exchanges: prev.exchanges.filter(e => e !== exchange) }))
-                              }
-                            }}
-                          />
-                          <Label htmlFor={exchange} className="text-sm">
-                            {exchange}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="space-y-2">
+                    <Label>Exchange</Label>
+                    <Input
+                      placeholder="Search exchanges..."
+                      value={filters.exchange}
+                      onChange={(e) => setFilters(prev => ({ ...prev, exchange: e.target.value }))}
+                    />
                   </div>
                 </div>
 
