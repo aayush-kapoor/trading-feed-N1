@@ -22,47 +22,45 @@ import {
 } from "lucide-react"
 
 type Trade = {
-  signature: string
+  id: string
   timestamp: number
-  name: string
   symbol: string
-  sol_amount: number
-  token_amount: number
-  usd_market_cap: number
-  market_cap: number
-  is_buy: boolean
-  user: string
-  creator: string
-  nsfw: boolean
+  price: number
+  size: number
+  side: "buy" | "sell"
+  exchange: string
 }
 
 // Mock data generator for testing
 const generateMockTrade = (): Trade => {
-  const names = ["Pepe Coin", "Shiba Inu", "Bonk", "Dogwifhat", "Book of Memes"]
-  const symbols = ["PEPE", "SHIB", "BONK", "WIF", "BOME"]
-  const creators = ["9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", "6ewU9SUWhpwcdBGX9ah3CnZH6KF3sxmCS2ge8RxxgSVX", "888ykptGY7PTUFHbW6x5TWhKzZJUj6zTeF4AVjonwebP"]
-  const users = ["4K3Dz35VETy8J7pHdQGFzEkrqFGGWfJZpXrNFWbLBFm2", "7xKXtg2CW9to3BNmu8pXqrXgJtEfKmZXgNT5c1GbPfxt", "2RYCGvqCVjdmGkjnR4WUJKCVfN3FDLNZqyy5YfpZCwZQ"]
+  const symbols = ["BTC/USD", "ETH/USD", "SOL/USD", "ADA/USD", "DOT/USD", "AVAX/USD", "MATIC/USD"]
+  const exchanges = ["Binance", "Coinbase", "Kraken", "Bybit", "OKX", "Gemini", "KuCoin"]
+  const sides: ("buy" | "sell")[] = ["buy", "sell"]
 
-  const randomIndex = Math.floor(Math.random() * names.length)
-  const isBuy = Math.random() > 0.5
-  const solAmount = Math.floor(Math.random() * 50000000) + 1000000 // 1-50 SOL in lamports
-  const tokenAmount = Math.floor(Math.random() * 1000000000) + 1000000
-  const marketCap = Math.random() * 500 + 10 // 10-500 SOL
-  const usdMarketCap = marketCap * (Math.random() * 50 + 150) // SOL price ~150-200
+  const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)]
+  const randomExchange = exchanges[Math.floor(Math.random() * exchanges.length)]
+  const randomSide = sides[Math.floor(Math.random() * sides.length)]
+
+  // Generate realistic price based on symbol
+  let basePrice = 50000 // Default for BTC
+  if (randomSymbol.includes("ETH")) basePrice = 3500
+  else if (randomSymbol.includes("SOL")) basePrice = 100
+  else if (randomSymbol.includes("ADA")) basePrice = 0.5
+  else if (randomSymbol.includes("DOT")) basePrice = 7
+  else if (randomSymbol.includes("AVAX")) basePrice = 40
+  else if (randomSymbol.includes("MATIC")) basePrice = 1.2
+
+  const price = basePrice * (0.95 + Math.random() * 0.1) // ±5% variation
+  const size = Math.random() * 10 + 0.001 // 0.001 to 10
 
   return {
-    signature: crypto.randomUUID().replace(/-/g, '') + 'ABC123',
+    id: crypto.randomUUID(),
     timestamp: Date.now(),
-    name: names[randomIndex],
-    symbol: symbols[randomIndex],
-    sol_amount: solAmount,
-    token_amount: tokenAmount,
-    usd_market_cap: usdMarketCap,
-    market_cap: marketCap,
-    is_buy: isBuy,
-    user: users[Math.floor(Math.random() * users.length)],
-    creator: creators[Math.floor(Math.random() * creators.length)],
-    nsfw: Math.random() > 0.7,
+    symbol: randomSymbol,
+    price: price,
+    size: size,
+    side: randomSide,
+    exchange: randomExchange,
   }
 }
 
@@ -78,32 +76,6 @@ export default function TradingFeed() {
   const [isMockMode, setIsMockMode] = useState(false)
   const [mockInterval, setMockInterval] = useState<NodeJS.Timeout | null>(null)
 
-  // Format SOL amount (convert from lamports)
-  const formatSolAmount = (lamports: number) => {
-    const sol = lamports / 1000000000 // Convert lamports to SOL
-    return `${sol.toFixed(4)} SOL`
-  }
-
-  // Format token amount with appropriate decimal places
-  const formatTokenAmount = (amount: number) => {
-    if (amount > 1000000) {
-      return `${(amount / 1000000).toFixed(2)}M`
-    } else if (amount > 1000) {
-      return `${(amount / 1000).toFixed(2)}K`
-    }
-    return amount.toFixed(0)
-  }
-
-  // Format market cap in USD
-  const formatMarketCap = (usdMarketCap: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(usdMarketCap)
-  }
-
   // Format timestamp
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString("en-US", {
@@ -113,6 +85,16 @@ export default function TradingFeed() {
       second: "2-digit",
       fractionalSecondDigits: 3,
     })
+  }
+
+  // Format price with appropriate decimal places
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 8,
+    }).format(price)
   }
 
   // Handle incoming trade data from both Socket.IO and WebSocket
@@ -138,22 +120,17 @@ export default function TradingFeed() {
 
       // Map the data to our Trade type
       const trade: Trade = {
-        signature: parsedData.signature || 'unknown',
+        id: parsedData.id || crypto.randomUUID(),
         timestamp: parsedData.timestamp || Date.now(),
-        name: parsedData.name || 'Unknown Token',
         symbol: parsedData.symbol || 'UNK',
-        sol_amount: parsedData.sol_amount || 0,
-        token_amount: parsedData.token_amount || 0,
-        usd_market_cap: parsedData.usd_market_cap || 0,
-        market_cap: parsedData.market_cap || 0,
-        is_buy: parsedData.is_buy || false,
-        user: parsedData.user || 'unknown',
-        creator: parsedData.creator || 'unknown',
-        nsfw: parsedData.nsfw || false,
+        price: parsedData.price || 0,
+        size: parsedData.size || 0,
+        side: parsedData.side || 'buy',
+        exchange: parsedData.exchange || 'unknown',
       }
       
       // Validate essential fields
-      if (trade.signature && trade.timestamp && trade.name && trade.symbol) {
+      if (trade.id && trade.timestamp && trade.symbol) {
         setTrades((prevTrades) => [trade, ...prevTrades.slice(0, 99)]) // Keep last 100 trades
       }
     } catch (err) {
@@ -497,56 +474,51 @@ export default function TradingFeed() {
               <div className="overflow-x-auto">
                 <div className="min-w-full">
                   {/* Header */}
-                  <div className="grid grid-cols-8 gap-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg mb-2 text-sm font-medium text-slate-600 dark:text-slate-400">
+                  <div className="grid grid-cols-6 gap-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg mb-2 text-sm font-medium text-slate-600 dark:text-slate-400">
                     <div className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       Time
                     </div>
-                    <div>Token</div>
                     <div>Symbol</div>
-                    <div>SOL Amount</div>
-                    <div>Token Amount</div>
                     <div className="flex items-center gap-1">
                       <DollarSign className="h-3 w-3" />
-                      Market Cap
+                      Price
                     </div>
+                    <div>Size</div>
                     <div>Side</div>
-                    <div>User</div>
+                    <div>Exchange</div>
                   </div>
 
                   {/* Trades */}
                   <div className="space-y-1 max-h-96 overflow-y-auto">
                     {trades.map((trade, index) => (
                       <div
-                        key={`${trade.signature}-${trade.timestamp}-${index}`}
-                        className="grid grid-cols-8 gap-4 p-3 rounded-lg border transition-all duration-300 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                        key={`${trade.id}-${trade.timestamp}-${index}`}
+                        className="grid grid-cols-6 gap-4 p-3 rounded-lg border transition-all duration-300 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
                       >
                         <div className="text-sm font-mono text-slate-600 dark:text-slate-400">
                           {formatTime(trade.timestamp)}
                         </div>
-                        <div className="font-medium truncate" title={trade.name}>
-                          {trade.name}
-                          {trade.nsfw && <span className="ml-1 text-xs text-red-500">🔞</span>}
+                        <div className="font-medium truncate" title={trade.symbol}>
+                          {trade.symbol}
                         </div>
-                        <div className="font-mono text-blue-600 dark:text-blue-400">{trade.symbol}</div>
-                        <div className="font-mono text-sm">{formatSolAmount(trade.sol_amount)}</div>
-                        <div className="font-mono text-sm">{formatTokenAmount(trade.token_amount)}</div>
-                        <div className="font-mono text-sm">{formatMarketCap(trade.usd_market_cap)}</div>
+                        <div className="font-mono text-sm">{formatPrice(trade.price)}</div>
+                        <div className="font-mono text-sm">{trade.size.toFixed(3)}</div>
                         <div>
                           <Badge
-                            variant={trade.is_buy ? "default" : "destructive"}
+                            variant={trade.side === "buy" ? "default" : "destructive"}
                             className="flex items-center gap-1 w-fit"
                           >
-                            {trade.is_buy ? (
+                            {trade.side === "buy" ? (
                               <TrendingUp className="h-3 w-3" />
                             ) : (
                               <TrendingDown className="h-3 w-3" />
                             )}
-                            {trade.is_buy ? "BUY" : "SELL"}
+                            {trade.side === "buy" ? "BUY" : "SELL"}
                           </Badge>
                         </div>
-                        <div className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate" title={trade.user}>
-                          {trade.user.substring(0, 8)}...
+                        <div className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate" title={trade.exchange}>
+                          {trade.exchange}
                         </div>
                       </div>
                     ))}

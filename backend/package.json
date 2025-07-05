@@ -1,0 +1,17 @@
+{
+  "name": "trading-websocket-backend",
+  "version": "1.0.0",
+  "description": "Simple WebSocket server for mock trading data",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "uuid": "^10.0.0"
+  },
+  "keywords": ["websocket", "trading", "mock", "server"],
+  "author": "",
+  "license": "MIT"
+} 
