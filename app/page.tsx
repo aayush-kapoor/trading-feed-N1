@@ -24,6 +24,8 @@ import {
   Filter,
   ChevronDown,
   X,
+  ShoppingCart,
+  Banknote,
 } from "lucide-react"
 
 type Trade = {
@@ -156,7 +158,7 @@ export default function TradingFeed() {
     try {
       // Log the original message format to console
       console.log("📨 Original WebSocket message received:", tradeData)
-      toast.info("New message received - check console logs")
+      // toast.info("New message received - check console logs")
 
       let parsedData = tradeData
 
@@ -190,7 +192,7 @@ export default function TradingFeed() {
         trade = {
           id: parsedData.signature || parsedData.id || crypto.randomUUID(),
           timestamp: parsedData.timestamp || Date.now(),
-          symbol: parsedData.symbol || `${parsedData.name || 'UNK'}/${parsedData.symbol || 'USD'}`,
+          symbol: parsedData.symbol || `${parsedData.name || 'MOCK'}/${parsedData.symbol || 'MOCK'}`,
           price: parsedData.price || parsedData.sol_amount || 0,
           size: parsedData.size || parsedData.token_amount || 0,
           side: parsedData.side || (parsedData.is_buy ? 'buy' : 'sell'),
@@ -374,7 +376,7 @@ export default function TradingFeed() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="container mx-auto p-6 max-w-7xl">
+      <div className="container mx-auto p-6 pr-8 max-w-7xl">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
@@ -489,7 +491,7 @@ export default function TradingFeed() {
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-4 p-4 border rounded-lg bg-slate-50 dark:bg-slate-800">
+              <CollapsibleContent className="space-y-4 p-4 pr-6 border rounded-lg bg-slate-50 dark:bg-slate-800">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Symbol Filter */}
                   <div className="space-y-2">
@@ -625,7 +627,6 @@ export default function TradingFeed() {
                     </div>
                     <div>Symbol</div>
                     <div className="flex items-center gap-1">
-                      <DollarSign className="h-3 w-3" />
                       Price
                     </div>
                     <div>Size</div>
@@ -634,11 +635,11 @@ export default function TradingFeed() {
                   </div>
 
                   {/* Trades */}
-                  <div className="space-y-1 max-h-96 overflow-y-auto">
+                  <div className="space-y-1 max-h-96 overflow-y-auto pr-4">
                     {filteredTrades.map((trade, index) => (
                       <div
                         key={`${trade.id}-${trade.timestamp}-${index}`}
-                        className="grid grid-cols-6 gap-4 p-3 rounded-lg border transition-all duration-300 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                        className="grid grid-cols-6 gap-4 p-3 rounded-lg border transition-all duration-300 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mr-2"
                       >
                         <div className="text-sm font-mono text-slate-600 dark:text-slate-400">
                           {formatTime(trade.timestamp)}
@@ -650,13 +651,17 @@ export default function TradingFeed() {
                         <div className="font-mono text-sm">{trade.size.toFixed(3)}</div>
                         <div>
                           <Badge
-                            variant={trade.side === "buy" ? "default" : "destructive"}
-                            className="flex items-center gap-1 w-fit"
+                            variant={trade.side === "buy" ? "default" : "secondary"}
+                            className={`flex items-center gap-1 w-fit ${
+                              trade.side === "sell" 
+                                ? "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200" 
+                                : ""
+                            }`}
                           >
                             {trade.side === "buy" ? (
-                              <TrendingUp className="h-3 w-3" />
+                              <ShoppingCart className="h-3 w-3" />
                             ) : (
-                              <TrendingDown className="h-3 w-3" />
+                              <Banknote className="h-3 w-3" />
                             )}
                             {trade.side === "buy" ? "BUY" : "SELL"}
                           </Badge>
